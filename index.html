@@ -115,6 +115,18 @@
         // Double Jump
         let doubleJumpParticles = [];
 
+        // Lightning
+        let lightning = {
+            active: false,
+            startTime: 0,
+            duration: 500, // ms
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 30,
+            direction: 1 // 1 for right, -1 for left
+        };
+
         // Game settings
         const gravity = 0.5;
         const friction = 0.8;
@@ -135,8 +147,8 @@
         let player = {
             x: canvas.width / 2,
             y: canvas.height - 150,
-            width: 50,
-            height: 50,
+            width: 75,
+            height: 75,
             speed: 5,
             velX: 0,
             velY: 0,
@@ -146,6 +158,9 @@
         const playerImage = new Image();
         playerImage.src = 'assets/images/player_character.png';
         let playerFacingRight = true;
+
+        // Kill counter
+        let killCount = 0;
 
         // Scoring
         let score = 0;
@@ -226,6 +241,14 @@
                     }
                 }
             }
+
+            // 'Z' key for lightning
+            if ((e.keyCode === 90 || e.key === 'z' || e.key === 'Z') && hasStarted) {
+                if (!lightning.active) {
+                    lightning.active = true;
+                    lightning.startTime = Date.now();
+                }
+            }
         });
 
         window.addEventListener('keyup', function(e) {
@@ -244,6 +267,25 @@
         
 
         function updateGame() {
+            // Lightning status
+            if (lightning.active) {
+                if (Date.now() - lightning.startTime > lightning.duration) {
+                    lightning.active = false;
+                } else {
+                    // Update lightning position to follow player center
+                    lightning.direction = playerFacingRight ? 1 : -1;
+                    lightning.y = player.y + player.height / 2 - 15; // center of player
+                    lightning.height = 30;
+                    if (lightning.direction === 1) {
+                        lightning.x = player.x + player.width;
+                        lightning.width = canvas.width - lightning.x;
+                    } else {
+                        lightning.x = 0;
+                        lightning.width = player.x;
+                    }
+                }
+            }
+
             // Star powerup status
             if (isInvincible && Date.now() - invincibilityStartTime > 7000) {
                 isInvincible = false;
@@ -415,6 +457,29 @@
                     }
                 }
             });
+
+            // Lightning collision check
+            if (lightning.active) {
+                platforms.forEach(platform => {
+                    if (platform.hasEnemy) {
+                        const enemyWidth = 50;
+                        const enemyHeight = 50;
+                        const enemyX = platform.x + platform.enemyX;
+                        const enemyY = platform.y - 28; // matching draw alignment
+
+                        const hitByLightning =
+                            lightning.x < enemyX + enemyWidth &&
+                            lightning.x + lightning.width > enemyX &&
+                            lightning.y < enemyY + enemyHeight &&
+                            lightning.y + lightning.height > enemyY;
+
+                        if (hitByLightning) {
+                            platform.hasEnemy = false;
+                            killCount++;
+                        }
+                    }
+                });
+            }
 
             // ENEMY COLLISION CHECK — PLAYER TOUCH = GAME OVER
             platforms.forEach(platform => {
@@ -642,6 +707,49 @@
                 
             });
 
+            // Draw Lightning (after platforms so it renders on top)
+            if (lightning.active) {
+                const drawY = lightning.y + lightning.height / 2;
+
+                // Outer glow
+                ctx.save();
+                ctx.strokeStyle = '#00ffff';
+                ctx.lineWidth = 6;
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = '#00ffff';
+                ctx.globalAlpha = 0.7;
+
+                ctx.beginPath();
+                ctx.moveTo(lightning.x, drawY);
+
+                const segmentCount = 14;
+                const segmentWidth = lightning.width / segmentCount;
+                let currentX = lightning.x;
+                const offsets = [];
+
+                for (let i = 1; i <= segmentCount; i++) {
+                    currentX += segmentWidth;
+                    const offset = (Math.random() - 0.5) * 30;
+                    offsets.push({ x: currentX, y: drawY + offset });
+                    ctx.lineTo(currentX, drawY + offset);
+                }
+                ctx.stroke();
+                ctx.restore();
+
+                // Inner bright core
+                ctx.save();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = 'white';
+
+                ctx.beginPath();
+                ctx.moveTo(lightning.x, drawY);
+                offsets.forEach(pt => ctx.lineTo(pt.x, pt.y));
+                ctx.stroke();
+                ctx.restore();
+            }
+
             // --- Draw Double Jump Particles ---
             for (let i = doubleJumpParticles.length - 1; i >= 0; i--) {
                 const p = doubleJumpParticles[i];
@@ -669,6 +777,12 @@
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'left';
             ctx.fillText('Score: ' + score, 10, 30);
+
+            // --- Draw Kill Counter Top-Right ---
+            ctx.font = '14px "Press Start 2P", Arial';
+            ctx.fillStyle = '#ff4444';
+            ctx.textAlign = 'right';
+            ctx.fillText('\uD83D\uDC32 Kills: ' + killCount, canvas.width - 10, 30);
 
             // --- Power-Up Bar ---
             if (isInvincible) {
