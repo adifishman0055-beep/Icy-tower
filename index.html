@@ -34,14 +34,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <canvas id="gameCanvas" width="1000" height="1000"></canvas>
     <div id="openingScreen" style="
     position: absolute;
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    width: 400px;
-    height: 600px;
+    width: 1000px;
+    height: 1000px;
     background: url('assets/images/opening_screen.jpeg') no-repeat center center / cover;
     z-index: 20;
     display: flex;
@@ -99,6 +99,14 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
+        // Resolution Scaling
+        const logicalWidth = 1000;
+        const logicalHeight = 1000;
+        const scaleFactor = 5;
+        canvas.width = logicalWidth * scaleFactor;
+        canvas.height = logicalHeight * scaleFactor;
+        ctx.scale(scaleFactor, scaleFactor);
+
         // Star power
         const starImage = new Image();
         starImage.src = 'assets/images/power_star.png';
@@ -145,8 +153,8 @@
 
         // Player
         let player = {
-            x: canvas.width / 2,
-            y: canvas.height - 150,
+            x: logicalWidth / 2,
+            y: logicalHeight - 150,
             width: 75,
             height: 75,
             speed: 5,
@@ -156,7 +164,7 @@
         };
         // Player character
         const playerImage = new Image();
-        playerImage.src = 'assets/images/player_character.png';
+        playerImage.src = 'assets/images/Trump pig .png';
         let playerFacingRight = true;
 
         // Kill counter
@@ -172,13 +180,13 @@
         const minPlatformGap = 80;
         const maxPlatformGap = 120;
         let platforms = [];
-        let prevY = canvas.height - 50;
-        const verticalMoveChance = 0.06; // 6%
+        let prevY = logicalHeight - 50;
+        const verticalMoveChance = 0; // 0%
         const baseVerticalSpeed = 0.3;
         const speedIncreaseEvery = 50; // platforms
         const hasEnemy = Math.random() < 0.05;
         const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
-        const isMovingVertically = Math.random() < verticalMoveChance;
+        const isMovingVertically = false;
         const hasStar = Math.random() < 0.1; // 10% chance
         const hasCannon = Math.random() < 0.04;
 
@@ -190,12 +198,12 @@
         
             const hasEnemy = Math.random() < 0.05;
             const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
-            const isMovingVertically = Math.random() < verticalMoveChance;
-            const isCracked = Math.random() < 0.08; 
+            const isMovingVertically = false;
+            const isCracked = false; 
         
             platforms.push({
                 level: currentLevel++,
-                x: Math.random() * (canvas.width - 50),
+                x: Math.random() * (logicalWidth - 50),
                 y: y,
                 width: 100 + Math.random() * 75,
                 height: 20,
@@ -278,7 +286,7 @@
                     lightning.height = 30;
                     if (lightning.direction === 1) {
                         lightning.x = player.x + player.width;
-                        lightning.width = canvas.width - lightning.x;
+                        lightning.width = logicalWidth - lightning.x;
                     } else {
                         lightning.x = 0;
                         lightning.width = player.x;
@@ -320,19 +328,19 @@
             player.y += player.velY;
 
             // Screen scroll
-            if (player.y < canvas.height / 4) {
+            if (player.y < logicalHeight / 4) {
                 const scrollAmount = Math.abs(player.velY);
                 player.y += scrollAmount;
 
                 platforms.forEach(platform => {
                     platform.y += scrollAmount;
 
-                    if (platform.y > canvas.height) {
+                    if (platform.y > logicalHeight) {
                         const lastPlatformY = Math.min(...platforms.map(p => p.y));
                         const gap = Math.floor(Math.random() * (maxPlatformGap - minPlatformGap + 1)) + minPlatformGap;
                     
                         platform.y = lastPlatformY - gap;
-                        platform.x = Math.random() * (canvas.width - platform.width);
+                        platform.x = Math.random() * (logicalWidth - platform.width);
                         platform.level = currentLevel++;
                         updateWeather(currentLevel);
                         platform.timeOccupied = 0;
@@ -376,13 +384,13 @@
 
 
             // Canvas bounds
-            if (player.x >= canvas.width - player.width) player.x = canvas.width - player.width;
+            if (player.x >= logicalWidth - player.width) player.x = logicalWidth - player.width;
             else if (player.x <= 0) player.x = 0;
 
-            if (player.y >= canvas.height - player.height) {
+            if (player.y >= logicalHeight - player.height) {
                 if (score < 20) {
                     // Allow safe landing on ground early in game
-                    player.y = canvas.height - player.height;
+                    player.y = logicalHeight - player.height;
                     player.velY = 0;
                     player.jumping = false;
                     canDoubleJump = true;
@@ -421,14 +429,6 @@
                         player.jumping = true;
                     }
                     
-                    // Increase timer while standing
-                    platform.timeOccupied += 1 / 60;
-
-                    // Make platform fall if standing for 1 seconds or 0.1 if cracked
-                    if (platform.timeOccupied >= (platform.isCracked ? 0.1 : 1)) {
-                        platform.isFalling = true;
-                    }
-
                     // Scoring logic
                     if (platform.level > maxPlatformLevel) {
                         maxPlatformLevel = platform.level;
@@ -534,7 +534,7 @@
             platforms.forEach(platform => {
                 if (platform.isFalling) {
                     platform.y += 5;
-                    if (platform.y > canvas.height + 100) {
+                    if (platform.y > logicalHeight + 100) {
                         platform.width = 0;
                         platform.height = 0;
                     }
@@ -553,16 +553,16 @@
             // DRAW EVERYTHING (PLATFORMS + ENEMIES + LEVEL LABELS)
 
             // Clear screen
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
             // Draw the background
-            ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(backgroundImage, 0, 0, logicalWidth, logicalHeight);
           
 
             // Draw player with image
             ctx.save();
             ctx.translate(player.x + player.width / 2, player.y + player.height / 2); // move origin to center of player
-            ctx.scale(playerFacingRight ? 1 : -1, 1); // flip horizontally if needed
+            ctx.scale(playerFacingRight ? -1 : 1, 1); // flip horizontally to face movement direction
             ctx.drawImage(
                 playerImage,
                 -player.width / 2,
@@ -666,9 +666,9 @@
                     ctx.stroke();
 
                     drop.y += drop.speed;
-                    if (drop.y > canvas.height) {
+                    if (drop.y > logicalHeight) {
                         drop.y = -drop.length;
-                        drop.x = Math.random() * canvas.width;
+                        drop.x = Math.random() * logicalWidth;
                     }
                 });
             } else if (currentWeather === 'snowy') {
@@ -681,27 +681,27 @@
                     flake.y += flake.speed;
                     flake.x += flake.drift;
 
-                    if (flake.y > canvas.height) {
+                    if (flake.y > logicalHeight) {
                         flake.y = -flake.radius;
-                        flake.x = Math.random() * canvas.width;
+                        flake.x = Math.random() * logicalWidth;
                     }
                 });
             } else if (currentWeather === 'foggy') {
                 fogOffset += 0.2; // slower movement for a calm feel
             
                 for (let i = 0; i < 3; i++) {
-                    const offset = (fogOffset + i * 150) % canvas.width;
+                    const offset = (fogOffset + i * 150) % logicalWidth;
                     const opacity = 0.03 + (i % 2) * 0.02;
             
                     ctx.fillStyle = `rgba(200, 200, 200, ${opacity})`;
                     ctx.beginPath();
-                    ctx.ellipse(offset, canvas.height / 2 + i * 40 - 40, 250, 70, 0, 0, Math.PI * 2);
+                    ctx.ellipse(offset, logicalHeight / 2 + i * 40 - 40, 250, 70, 0, 0, Math.PI * 2);
                     ctx.fill();
                 }
             
                 // Very light haze over the screen
                 ctx.fillStyle = 'rgba(180, 180, 180, 0.02)';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, logicalWidth, logicalHeight);
             }
             
                 
@@ -782,7 +782,7 @@
             ctx.font = '14px "Press Start 2P", Arial';
             ctx.fillStyle = '#ff4444';
             ctx.textAlign = 'right';
-            ctx.fillText('\uD83D\uDC32 Kills: ' + killCount, canvas.width - 10, 30);
+            ctx.fillText('\uD83D\uDC32 Kills: ' + killCount, logicalWidth - 10, 30);
 
             // --- Power-Up Bar ---
             if (isInvincible) {
@@ -876,15 +876,15 @@
             // Initialize rain or snow particles when the weather changes
             if (currentWeather === 'rainy') {
                 rainDrops = Array.from({ length: 50 }, () => ({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
+                    x: Math.random() * logicalWidth,
+                    y: Math.random() * logicalHeight,
                     length: 10 + Math.random() * 10,
                     speed: 2 + Math.random() * 2
                 }));
             } else if (currentWeather === 'snowy') {
                 snowFlakes = Array.from({ length: 40 }, () => ({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
+                    x: Math.random() * logicalWidth,
+                    y: Math.random() * logicalHeight,
                     radius: 1 + Math.random() * 2,
                     speed: 0.5 + Math.random(),
                     drift: (Math.random() - 0.5) * 0.5
