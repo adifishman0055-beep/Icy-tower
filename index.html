@@ -12,13 +12,21 @@
             background: #000;
             display: flex;
             justify-content: center; /* horizontally center */
-            align-items: flex-start; /* stick to top */
+            align-items: center; /* vertically center */
         }
         
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+        }
+
         #gameCanvas {
-            margin-top: 20px; /* optional spacing from the top */
             background-color: #87CEEB;
             box-shadow: 0 0 20px #000; /* optional: adds a soft shadow */
+            display: block;
+            width: 400px;
+            height: 600px;
         }
 
         @keyframes blink {
@@ -34,26 +42,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
-    <canvas id="gameCanvas" width="1000" height="1000"></canvas>
-    <div id="openingScreen" style="
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 1000px;
-    height: 1000px;
-    background: url('assets/images/opening_screen.jpeg') no-repeat center center / cover;
-    z-index: 20;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    font-family: 'Press Start 2P', Arial, sans-serif;
-    color: white;
-    padding-bottom: 50px;
-">
-    <p id="startPrompt" style="font-size: 12px;">Press SPACE to Start</p>
-</div>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="openingScreen" style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 400px;
+        height: 600px;
+        background: url('assets/images/opening_screen.jpeg') no-repeat center center / 100% 100%;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        font-family: 'Press Start 2P', Arial, sans-serif;
+        color: white;
+        padding-bottom: 50px;
+    ">
+        <p id="startPrompt" style="font-size: 12px;">Press SPACE or Click to Start</p>
+    </div>
     <script>
         // Load sounds
         // Star powerup sounds
@@ -61,6 +69,10 @@
         const starEndSound = new Audio('assets/sounds/star_powerup_timeout.mp3');
         // Cannon sounds
         const cannonShotSound = new Audio('assets/sounds/cannon_shot.mp3');
+        // Lightning sound
+        const lightningSound = new Audio('assets/sounds/lightning.mp3'); 
+        // Dragon kill sound
+        const dragonKillSound = new Audio('assets/sounds/dragon_kill.mp3');
         // BackGroung game sound effects
         const bgMusic = new Audio('assets/sounds/ingame_sound_effect.mp3');
         bgMusic.loop = true; // Play it continuously
@@ -100,8 +112,8 @@
         const ctx = canvas.getContext('2d');
 
         // Resolution Scaling
-        const logicalWidth = 1000;
-        const logicalHeight = 1000;
+        const logicalWidth = 400;
+        const logicalHeight = 600;
         const scaleFactor = 5;
         canvas.width = logicalWidth * scaleFactor;
         canvas.height = logicalHeight * scaleFactor;
@@ -143,6 +155,7 @@
         let animationId = null;
         let hasStarted = false; // prevents game over at launch
         let jumpEnabled = true; // prevent the jump after oppening screen
+        let canDoubleJump = false;
 
         // weather
         const weatherTypes = ['sunny', 'rainy', 'snowy', 'foggy'];
@@ -161,10 +174,14 @@
             velX: 0,
             velY: 0,
             jumping: false,
+            rotation: 0,
+            isRotating: false
         };
         // Player character
         const playerImage = new Image();
         playerImage.src = 'assets/images/Trump pig .png';
+        const jumpingPlayerImage = new Image();
+        jumpingPlayerImage.src = 'assets/Jumping Trump pig.png';
         let playerFacingRight = true;
 
         // Kill counter
@@ -175,6 +192,10 @@
         let maxPlatformLevel = -1;
         let currentLevel = 1;
         let lastScoreTime = Date.now(); // Initialize with current time
+        let bgScroll = 0; // For parallax effect
+        let lives = 3;
+        let iFrames = 0; // Invincibility frames after getting hit
+        let fallingHearts = []; // For falling heart animation
 
         // Platforms
         const minPlatformGap = 80;
@@ -184,7 +205,7 @@
         const verticalMoveChance = 0; // 0%
         const baseVerticalSpeed = 0.3;
         const speedIncreaseEvery = 50; // platforms
-        const hasEnemy = Math.random() < 0.05;
+        const hasEnemy = Math.random() < 0.15; // Increased to 15%
         const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
         const isMovingVertically = false;
         const hasStar = Math.random() < 0.1; // 10% chance
@@ -196,16 +217,18 @@
             const y = prevY - gap;
             prevY = y;
         
-            const hasEnemy = Math.random() < 0.05;
+            const hasEnemy = Math.random() < 0.15; // Increased to 15%
             const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
             const isMovingVertically = false;
             const isCracked = false; 
+            const width = 100 + Math.random() * 75;
+            const margin = 10;
         
             platforms.push({
                 level: currentLevel++,
-                x: Math.random() * (logicalWidth - 50),
+                x: margin + Math.random() * (logicalWidth - width - margin * 2),
                 y: y,
-                width: 100 + Math.random() * 75,
+                width: width,
                 height: 20,
                 isCracked: isCracked,
                 timeOccupied: 0,
@@ -228,24 +251,43 @@
         let keys = [];
         window.addEventListener('keydown', function(e) {
             keys[e.keyCode] = true;
-            if (e.keyCode === 32 && jumpEnabled) {
-                if (!player.jumping) {
-                    player.jumping = true;
-                    player.velY = baseJump - Math.abs(player.velX);
-                } else if (canDoubleJump) {
-                    player.velY = baseJump - Math.abs(player.velX);
-                    canDoubleJump = false;
 
-                    // Create double jump particles
-                    for (let i = 0; i < 12; i++) {
-                        doubleJumpParticles.push({
-                            x: player.x + player.width / 2,
-                            y: player.y + player.height,
-                            radius: 2 + Math.random() * 3,
-                            angle: Math.random() * Math.PI * 2,
-                            speed: 2 + Math.random() * 2,
-                            alpha: 1
-                        });
+            // Handle start game with Space
+            if ((e.keyCode === 32 || e.code === 'Space') && !hasStarted) {
+                e.preventDefault(); // Stop page scrolling
+                document.getElementById('openingScreen').style.display = 'none';
+                hasStarted = true;
+                jumpEnabled = false; // prevent instant jump
+                setTimeout(() => jumpEnabled = true, 300); // re-enable after 300ms
+                
+                if (!animationId) {
+                    updateGame();
+                }
+                return;
+            }
+
+            // Normal jumping logic
+            if ((e.keyCode === 32 || e.code === 'Space')) {
+                e.preventDefault(); // Stop page scrolling
+                if (jumpEnabled) {
+                    if (!player.jumping) {
+                        player.jumping = true;
+                        player.velY = baseJump - Math.abs(player.velX);
+                    } else if (canDoubleJump) {
+                        player.velY = baseJump - Math.abs(player.velX);
+                        canDoubleJump = false;
+
+                        // Create double jump particles
+                        for (let i = 0; i < 12; i++) {
+                            doubleJumpParticles.push({
+                                x: player.x + player.width / 2,
+                                y: player.y + player.height,
+                                radius: 2 + Math.random() * 3,
+                                angle: Math.random() * Math.PI * 2,
+                                speed: 2 + Math.random() * 2,
+                                alpha: 1
+                            });
+                        }
                     }
                 }
             }
@@ -255,6 +297,9 @@
                 if (!lightning.active) {
                     lightning.active = true;
                     lightning.startTime = Date.now();
+                    // ⚡ Play lightning sound
+                    lightningSound.currentTime = 0;
+                    lightningSound.play().catch(() => {});
                 }
             }
         });
@@ -263,18 +308,23 @@
             keys[e.keyCode] = false;
         });
 
-        document.addEventListener('keydown', function(e) {
-            if (e.code === 'Space' && !hasStarted) {
+        // Click/tap on opening screen also starts the game
+        document.getElementById('openingScreen').addEventListener('click', function() {
+            if (!hasStarted) {
                 document.getElementById('openingScreen').style.display = 'none';
                 hasStarted = true;
-                jumpEnabled = false; // prevent instant jump
-                setTimeout(() => jumpEnabled = true, 300); // re-enable after 300ms
-                updateGame();
+                jumpEnabled = false;
+                setTimeout(() => jumpEnabled = true, 300);
+                if (!animationId) {
+                    updateGame();
+                }
             }
         });
-        
 
         function updateGame() {
+            // Handle iFrames
+            if (iFrames > 0) iFrames--;
+
             // Lightning status
             if (lightning.active) {
                 if (Date.now() - lightning.startTime > lightning.duration) {
@@ -302,15 +352,20 @@
             
 
             // Play Music
-            bgMusic.play();
+            bgMusic.play().catch(() => {});
             
             // Movement
+            let currentSpeed = player.speed;
+            if (currentWeather === 'rainy') {
+                currentSpeed *= 1.5;
+            }
+
             if (keys[39]) {
-                if (player.velX < player.speed) player.velX++;
+                if (player.velX < currentSpeed) player.velX++;
                 playerFacingRight = true;
             }
             if (keys[37]) {
-                if (player.velX > -player.speed) player.velX--;
+                if (player.velX > -currentSpeed) player.velX--;
                 playerFacingRight = false;
             }
             
@@ -327,10 +382,20 @@
             player.x += player.velX;
             player.y += player.velY;
 
+            // Handle 360 rotation
+            if (player.isRotating) {
+                player.rotation += 15; // Speed of rotation
+                if (player.rotation >= 360) {
+                    player.rotation = 0;
+                    player.isRotating = false;
+                }
+            }
+
             // Screen scroll
             if (player.y < logicalHeight / 4) {
                 const scrollAmount = Math.abs(player.velY);
                 player.y += scrollAmount;
+                bgScroll = (bgScroll + scrollAmount * 0.3) % logicalHeight; // Slower for parallax
 
                 platforms.forEach(platform => {
                     platform.y += scrollAmount;
@@ -340,19 +405,25 @@
                         const gap = Math.floor(Math.random() * (maxPlatformGap - minPlatformGap + 1)) + minPlatformGap;
                     
                         platform.y = lastPlatformY - gap;
-                        platform.x = Math.random() * (logicalWidth - platform.width);
+                        
+                        const margin = 10;
+                        platform.width = 100 + Math.random() * 75;
+                        platform.x = margin + Math.random() * (logicalWidth - platform.width - margin * 2);
+
                         platform.level = currentLevel++;
                         updateWeather(currentLevel);
                         platform.timeOccupied = 0;
                         platform.isFalling = false;
                     
-                        const hasEnemy = Math.random() < 0.05;
+                        const hasEnemy = Math.random() < 0.15; // Increased to 15%
                         const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
-                        const isMovingVertically = Math.random() < verticalMoveChance;
+                        const isMovingVertically = false;
+                        const isCracked = false;
                         const hasCannon = Math.random() < 0.04;
                     
                         platform.hasEnemy = hasEnemy;
                         platform.enemyType = enemyType;
+                        platform.isCracked = isCracked;
                         platform.enemyX = Math.random() * (platform.width - 50); // assuming enemy size is 50
                         platform.enemyDirection = 1;
                         platform.hasStar = Math.random() < 0.1;
@@ -427,6 +498,8 @@
                         cannonShotSound.play();
                         player.velY = -35; // immediate super jump
                         player.jumping = true;
+                        player.isRotating = true;
+                        player.rotation = 0;
                     }
                     
                     // Scoring logic
@@ -476,6 +549,9 @@
                         if (hitByLightning) {
                             platform.hasEnemy = false;
                             killCount++;
+                            // 🐉 Play kill sound
+                            dragonKillSound.currentTime = 0;
+                            dragonKillSound.play().catch(() => {});
                         }
                     }
                 });
@@ -495,10 +571,22 @@
                         player.y < enemyY + enemyHeight &&
                         player.y + player.height > enemyY;
 
-                    if (touchingEnemy && !isInvincible) {
-                        showGameOver();
-                        cancelAnimationFrame(animationId);
+                    if (touchingEnemy && !isInvincible && iFrames <= 0) {
+                        lives--;
+                        iFrames = 90; // 1.5 seconds of invincibility
+                        
+                        // Spawn a falling heart animation
+                        fallingHearts.push({
+                            x: 10 + lives * 30, // Position of the heart that was just lost
+                            y: 30,
+                            velY: 2,
+                            opacity: 1
+                        });
 
+                        if (lives <= 0) {
+                            showGameOver();
+                            cancelAnimationFrame(animationId);
+                        }
                     }
                 }
             });
@@ -555,22 +643,32 @@
             // Clear screen
             ctx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-            // Draw the background
-            ctx.drawImage(backgroundImage, 0, 0, logicalWidth, logicalHeight);
+            // Draw the background with parallax effect
+            ctx.drawImage(backgroundImage, 0, bgScroll, logicalWidth, logicalHeight);
+            ctx.drawImage(backgroundImage, 0, bgScroll - logicalHeight, logicalWidth, logicalHeight);
           
 
             // Draw player with image
-            ctx.save();
-            ctx.translate(player.x + player.width / 2, player.y + player.height / 2); // move origin to center of player
-            ctx.scale(playerFacingRight ? -1 : 1, 1); // flip horizontally to face movement direction
-            ctx.drawImage(
-                playerImage,
-                -player.width / 2,
-                -player.height / 2,
-                player.width,
-                player.height
-            );
-            ctx.restore();
+            if (iFrames % 10 < 5) { // Flickering effect when hit
+                ctx.save();
+                ctx.translate(player.x + player.width / 2, player.y + player.height / 2); // move origin to center of player
+                if (player.isRotating) {
+                    ctx.rotate((player.rotation * Math.PI) / 180);
+                }
+                ctx.scale(playerFacingRight ? -1 : 1, 1); // flip horizontally to face movement direction
+                
+                // Choose image based on jumping state
+                const currentImg = player.jumping ? jumpingPlayerImage : playerImage;
+
+                ctx.drawImage(
+                    currentImg,
+                    -player.width / 2,
+                    -player.height / 2,
+                    player.width,
+                    player.height
+                );
+                ctx.restore();
+            }
 
         
             // Glow effect when invincible
@@ -654,8 +752,9 @@
                 
                     ctx.drawImage(cannonImage, cannonX, cannonY, 70, 70);
                 }
+            });
 
-                // --- Weather Effects ---
+            // --- Weather Effects (Moved outside platform loop for performance) ---
             if (currentWeather === 'rainy') {
                 ctx.strokeStyle = 'rgba(174,194,224,0.5)';
                 ctx.lineWidth = 1;
@@ -703,9 +802,6 @@
                 ctx.fillStyle = 'rgba(180, 180, 180, 0.02)';
                 ctx.fillRect(0, 0, logicalWidth, logicalHeight);
             }
-            
-                
-            });
 
             // Draw Lightning (after platforms so it renders on top)
             if (lightning.active) {
@@ -772,22 +868,45 @@
             }
 
 
-            // --- Draw Score Top-Left ---
+            // --- Draw Hearts & Score Top-Left ---
+            ctx.textAlign = 'left';
+            
+            // Hearts
+            ctx.font = '24px Arial';
+            let hearts = '';
+            for(let i = 0; i < 3; i++) {
+                hearts += (i < lives) ? '❤️' : '🖤'; // Red heart for life, black for lost
+            }
+            ctx.fillText(hearts, 10, 30);
+
+            // Score (now under hearts)
             ctx.font = '16px "Press Start 2P", Arial';
             ctx.fillStyle = '#fff';
-            ctx.textAlign = 'left';
-            ctx.fillText('Score: ' + score, 10, 30);
+            ctx.fillText('Score: ' + score, 10, 60);
+
+            // --- Draw Falling Hearts Animation ---
+            ctx.font = '24px Arial';
+            for (let i = fallingHearts.length - 1; i >= 0; i--) {
+                const fh = fallingHearts[i];
+                ctx.globalAlpha = fh.opacity;
+                ctx.fillText('❤️', fh.x, fh.y);
+                fh.y += fh.velY;
+                fh.velY += 0.2; // Gravity for heart
+                fh.opacity -= 0.01;
+                if (fh.opacity <= 0) fallingHearts.splice(i, 1);
+            }
+            ctx.globalAlpha = 1.0;
 
             // --- Draw Kill Counter Top-Right ---
             ctx.font = '14px "Press Start 2P", Arial';
             ctx.fillStyle = '#ff4444';
             ctx.textAlign = 'right';
-            ctx.fillText('\uD83D\uDC32 Kills: ' + killCount, logicalWidth - 10, 30);
+            ctx.fillText('\uD83D\uDC32 Dragons: ' + killCount, logicalWidth - 10, 30);
 
             // --- Power-Up Bar ---
             if (isInvincible) {
                 const x = 10;
-                const y = 40;
+                const y = 80;
                 const width = 120;
                 const height = 8;
                 const timeLeft = Math.max(0, 7000 - (Date.now() - invincibilityStartTime));
@@ -871,7 +990,10 @@
         
         function updateWeather(level) {
             const index = Math.floor(level / 100) % weatherTypes.length;
-            currentWeather = weatherTypes[index];
+            const newWeather = weatherTypes[index];
+            
+            if (currentWeather === newWeather) return; // Don't reset if it's already the same
+            currentWeather = newWeather;
         
             // Initialize rain or snow particles when the weather changes
             if (currentWeather === 'rainy') {
@@ -921,9 +1043,8 @@
     <div id="gameOverScreen" style="
             display: none;
             position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 0;
+            left: 0;
             width: 400px;
             height: 600px;
             background: url('assets/images/game_over_screen.jpeg') no-repeat center center / cover;
@@ -1014,5 +1135,6 @@
         ">
         </ol>
     </div>    
+</div>
 </body>
 </html>
