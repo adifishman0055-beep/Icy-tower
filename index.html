@@ -3,1138 +3,300 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platformer Game with Screen Scroll</title>
+    <title>Fish of Fortune</title>
     <style>
-        body, html {
+        body {
             margin: 0;
             padding: 0;
-            height: 100%;
-            background: #000;
             display: flex;
-            justify-content: center; /* horizontally center */
-            align-items: center; /* vertically center */
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
         }
         
         #game-container {
             position: relative;
-            width: 400px;
-            height: 600px;
-        }
-
-        #gameCanvas {
-            background-color: #87CEEB;
-            box-shadow: 0 0 20px #000; /* optional: adds a soft shadow */
-            display: block;
-            width: 400px;
-            height: 600px;
-        }
-
-        @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0; }
-        }
-
-        #startPrompt {
-        animation: blink 1.2s infinite;
         }
         
+        canvas {
+            border: 2px solid #333;
+            background-color: #fff;
+        }
+        
+        #game-stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        #game-over, #game-win {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        
+        button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            font-size: 16px;
+            cursor: pointer;
+        }
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
     <div id="game-container">
         <canvas id="gameCanvas" width="400" height="600"></canvas>
-        <div id="openingScreen" style="
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 400px;
-        height: 600px;
-        background: url('assets/images/opening_screen.jpeg') no-repeat center center / 100% 100%;
-        z-index: 20;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-end;
-        font-family: 'Press Start 2P', Arial, sans-serif;
-        color: white;
-        padding-bottom: 50px;
-    ">
-        <p id="startPrompt" style="font-size: 12px;">Press SPACE or Click to Start</p>
+        <div id="game-stats">Coins: 0 | Lives: 3</div>
+        <div id="game-over">
+            Game Over!
+            <br>
+            <button id="restart-button">Play Again</button>
+        </div>
+        <div id="game-win">
+            You Win!
+            <br>
+            <button id="play-again-button">Play Again</button>
+        </div>
     </div>
+
     <script>
-        // Load sounds
-        // Star powerup sounds
-        const starCollectSound = new Audio('assets/sounds/collect_star.mp3');
-        const starEndSound = new Audio('assets/sounds/star_powerup_timeout.mp3');
-        // Cannon sounds
-        const cannonShotSound = new Audio('assets/sounds/cannon_shot.mp3');
-        // Lightning sound
-        const lightningSound = new Audio('assets/sounds/lightning.mp3'); 
-        // Dragon kill sound
-        const dragonKillSound = new Audio('assets/sounds/dragon_kill.mp3');
-        // BackGroung game sound effects
-        const bgMusic = new Audio('assets/sounds/ingame_sound_effect.mp3');
-        bgMusic.loop = true; // Play it continuously
-        bgMusic.volume = 0.5; // Optional: lower volume
-        const gameOverMusic = new Audio('assets/sounds/game_over_sound_effect.mp3');
-        gameOverMusic.volume = 0.6; // Optional: adjust volume
-        // Weather sounds
-        const rainSound = new Audio('assets/sounds/rain_sound.mp3');
-        const snowSound = new Audio('assets/sounds/snow_sound.mp3');
-        const fogSound = new Audio('assets/sounds/fog_sound.mp3');
-
-        rainSound.loop = true;
-        snowSound.loop = true;
-        fogSound.loop = true;
-
-        rainSound.volume = 0.4;
-        snowSound.volume = 0.5;
-        fogSound.volume = 0.5;
-
-        // Backgroung
-        const backgroundImage = new Image();
-        backgroundImage.src = 'assets/images/background.jpeg';
-        
-        // Platform
-        const platformImage = new Image();
-        platformImage.src = 'assets/images/platform.png';
-        const crackedPlatformImage = new Image();
-        crackedPlatformImage.src = 'assets/images/platform_cracked.png';
-
-        // Enemies characters
-        const enemyImageType1 = new Image();
-        enemyImageType1.src = 'assets/images/enemy_type1.png'; // 🐉 dark dragon
-        const enemyImageType2 = new Image();
-        enemyImageType2.src = 'assets/images/enemy_type2.png'; // 🔥 red dragon
-
+        // Game variables
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-
-        // Resolution Scaling
-        const logicalWidth = 400;
-        const logicalHeight = 600;
-        const scaleFactor = 5;
-        canvas.width = logicalWidth * scaleFactor;
-        canvas.height = logicalHeight * scaleFactor;
-        ctx.scale(scaleFactor, scaleFactor);
-
-        // Star power
-        const starImage = new Image();
-        starImage.src = 'assets/images/power_star.png';
-        let isInvincible = false;
-        let invincibilityStartTime = 0;
-
-        // Cannon
-        const cannonImage = new Image();
-        cannonImage.src = 'assets/images/cannon.png';
-
-        const knightInCannonImage = new Image();
-        knightInCannonImage.src = 'assets/images/knight_in_the_cannon.png';
-
-        // Double Jump
-        let doubleJumpParticles = [];
-
-        // Lightning
-        let lightning = {
-            active: false,
-            startTime: 0,
-            duration: 500, // ms
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 30,
-            direction: 1 // 1 for right, -1 for left
-        };
-
+        const gameStats = document.getElementById('game-stats');
+        const gameOverScreen = document.getElementById('game-over');
+        const gameWinScreen = document.getElementById('game-win');
+        const restartButton = document.getElementById('restart-button');
+        const playAgainButton = document.getElementById('play-again-button');
+        
         // Game settings
-        const gravity = 0.5;
-        const friction = 0.8;
-        const baseJump = -10;
-
-        let animationId = null;
-        let hasStarted = false; // prevents game over at launch
-        let jumpEnabled = true; // prevent the jump after oppening screen
-        let canDoubleJump = false;
-
-        // weather
-        const weatherTypes = ['sunny', 'rainy', 'snowy', 'foggy'];
-        let currentWeather = 'sunny';
-        let rainDrops = [];
-        let snowFlakes = [];
-        let fogOffset = 0;
-
-        // Player
-        let player = {
-            x: logicalWidth / 2,
-            y: logicalHeight - 150,
-            width: 75,
-            height: 75,
-            speed: 5,
-            velX: 0,
-            velY: 0,
-            jumping: false,
-            rotation: 0,
-            isRotating: false
-        };
-        // Player character
-        const playerImage = new Image();
-        playerImage.src = 'assets/images/Trump pig .png';
-        const jumpingPlayerImage = new Image();
-        jumpingPlayerImage.src = 'assets/Jumping Trump pig.png';
-        let playerFacingRight = true;
-
-        // Kill counter
-        let killCount = 0;
-
-        // Scoring
-        let score = 0;
-        let maxPlatformLevel = -1;
-        let currentLevel = 1;
-        let lastScoreTime = Date.now(); // Initialize with current time
-        let bgScroll = 0; // For parallax effect
+        const laneCount = 5;
+        const laneWidth = canvas.width / laneCount;
+        const playerSize = 30;
+        const objectSize = 20;
+        const playerY = canvas.height - playerSize - 10;
+        let playerLane = Math.floor(laneCount / 2);
+        let coins = 0;
         let lives = 3;
-        let iFrames = 0; // Invincibility frames after getting hit
-        let fallingHearts = []; // For falling heart animation
-
-        // Platforms
-        const minPlatformGap = 80;
-        const maxPlatformGap = 120;
-        let platforms = [];
-        let prevY = logicalHeight - 50;
-        const verticalMoveChance = 0; // 0%
-        const baseVerticalSpeed = 0.3;
-        const speedIncreaseEvery = 50; // platforms
-        const hasEnemy = Math.random() < 0.15; // Increased to 15%
-        const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
-        const isMovingVertically = false;
-        const hasStar = Math.random() < 0.1; // 10% chance
-        const hasCannon = Math.random() < 0.04;
-
-
-        for (let i = 0; i < 10; i++) {
-            const gap = Math.floor(Math.random() * (maxPlatformGap - minPlatformGap + 1)) + minPlatformGap;
-            const y = prevY - gap;
-            prevY = y;
+        let gameRunning = true;
         
-            const hasEnemy = Math.random() < 0.15; // Increased to 15%
-            const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
-            const isMovingVertically = false;
-            const isCracked = false; 
-            const width = 100 + Math.random() * 75;
-            const margin = 10;
+        // Arrays to store game objects
+        let fallingObjects = [];
         
-            platforms.push({
-                level: currentLevel++,
-                x: margin + Math.random() * (logicalWidth - width - margin * 2),
-                y: y,
-                width: width,
-                height: 20,
-                isCracked: isCracked,
-                timeOccupied: 0,
-                isFalling: false,
-                hasEnemy: hasEnemy,
-                enemyType: enemyType,
-                enemyX: 0,
-                enemyDirection: 1,
-                isMovingVertically: isMovingVertically,
-                verticalDir: 1,
-                verticalOffset: 0,
-                hasStar: Math.random() < 0.1,
-                hasCannon: Math.random() < 0.04,
-                cannonActivated: false,
+        // Object types
+        const OBJECT_TYPES = {
+            COIN: { value: 1, color: 'yellow', shape: 'circle' },
+            GEM: { value: 10, color: 'purple', shape: 'diamond' },
+            OBSTACLE: { value: 0, color: 'red', shape: 'x' }
+        };
+        
+        // Initialize the game
+        function init() {
+            coins = 0;
+            lives = 3;
+            fallingObjects = [];
+            playerLane = Math.floor(laneCount / 2);
+            gameRunning = true;
+            gameOverScreen.style.display = 'none';
+            gameWinScreen.style.display = 'none';
+            updateStats();
+        }
+        
+        // Move player left or right
+        function movePlayer(direction) {
+            if (!gameRunning) return;
+            
+            if (direction === 'left' && playerLane > 0) {
+                playerLane--;
+            } else if (direction === 'right' && playerLane < laneCount - 1) {
+                playerLane++;
+            }
+        }
+        
+        // Add a new falling object
+        function addFallingObject() {
+            if (!gameRunning) return;
+            
+            const lane = Math.floor(Math.random() * laneCount);
+            
+            // Use weighted probabilities to make gems rare
+            const rand = Math.random();
+            let type;
+            
+            if (rand < 0.15) {
+                // 15% chance for gems (rare)
+                type = OBJECT_TYPES.GEM;
+            } else if (rand < 0.60) {
+                // 45% chance for coins
+                type = OBJECT_TYPES.COIN;
+            } else {
+                // 40% chance for obstacles
+                type = OBJECT_TYPES.OBSTACLE;
+            }
+            
+            fallingObjects.push({
+                lane: lane,
+                y: -objectSize,
+                type: type,
+                speed: 2 + Math.random() * 2  // Random speed between 2 and 4
             });
         }
         
-        
-        // Key Listener
-        let keys = [];
-        window.addEventListener('keydown', function(e) {
-            keys[e.keyCode] = true;
-
-            // Handle start game with Space
-            if ((e.keyCode === 32 || e.code === 'Space') && !hasStarted) {
-                e.preventDefault(); // Stop page scrolling
-                document.getElementById('openingScreen').style.display = 'none';
-                hasStarted = true;
-                jumpEnabled = false; // prevent instant jump
-                setTimeout(() => jumpEnabled = true, 300); // re-enable after 300ms
+        // Update all game objects
+        function update() {
+            if (!gameRunning) return;
+            
+            // Update falling objects
+            for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                const obj = fallingObjects[i];
+                obj.y += obj.speed;
                 
-                if (!animationId) {
-                    updateGame();
+                // Check if object is out of bounds
+                if (obj.y > canvas.height) {
+                    fallingObjects.splice(i, 1);
+                    continue;
                 }
-                return;
-            }
-
-            // Normal jumping logic
-            if ((e.keyCode === 32 || e.code === 'Space')) {
-                e.preventDefault(); // Stop page scrolling
-                if (jumpEnabled) {
-                    if (!player.jumping) {
-                        player.jumping = true;
-                        player.velY = baseJump - Math.abs(player.velX);
-                    } else if (canDoubleJump) {
-                        player.velY = baseJump - Math.abs(player.velX);
-                        canDoubleJump = false;
-
-                        // Create double jump particles
-                        for (let i = 0; i < 12; i++) {
-                            doubleJumpParticles.push({
-                                x: player.x + player.width / 2,
-                                y: player.y + player.height,
-                                radius: 2 + Math.random() * 3,
-                                angle: Math.random() * Math.PI * 2,
-                                speed: 2 + Math.random() * 2,
-                                alpha: 1
-                            });
-                        }
-                    }
-                }
-            }
-
-            // 'Z' key for lightning
-            if ((e.keyCode === 90 || e.key === 'z' || e.key === 'Z') && hasStarted) {
-                if (!lightning.active) {
-                    lightning.active = true;
-                    lightning.startTime = Date.now();
-                    // ⚡ Play lightning sound
-                    lightningSound.currentTime = 0;
-                    lightningSound.play().catch(() => {});
-                }
-            }
-        });
-
-        window.addEventListener('keyup', function(e) {
-            keys[e.keyCode] = false;
-        });
-
-        // Click/tap on opening screen also starts the game
-        document.getElementById('openingScreen').addEventListener('click', function() {
-            if (!hasStarted) {
-                document.getElementById('openingScreen').style.display = 'none';
-                hasStarted = true;
-                jumpEnabled = false;
-                setTimeout(() => jumpEnabled = true, 300);
-                if (!animationId) {
-                    updateGame();
-                }
-            }
-        });
-
-        function updateGame() {
-            // Handle iFrames
-            if (iFrames > 0) iFrames--;
-
-            // Lightning status
-            if (lightning.active) {
-                if (Date.now() - lightning.startTime > lightning.duration) {
-                    lightning.active = false;
-                } else {
-                    // Update lightning position to follow player center
-                    lightning.direction = playerFacingRight ? 1 : -1;
-                    lightning.y = player.y + player.height / 2 - 15; // center of player
-                    lightning.height = 30;
-                    if (lightning.direction === 1) {
-                        lightning.x = player.x + player.width;
-                        lightning.width = logicalWidth - lightning.x;
-                    } else {
-                        lightning.x = 0;
-                        lightning.width = player.x;
-                    }
-                }
-            }
-
-            // Star powerup status
-            if (isInvincible && Date.now() - invincibilityStartTime > 7000) {
-                isInvincible = false;
-                starEndSound.play(); // play end sound
-            }
-            
-
-            // Play Music
-            bgMusic.play().catch(() => {});
-            
-            // Movement
-            let currentSpeed = player.speed;
-            if (currentWeather === 'rainy') {
-                currentSpeed *= 1.5;
-            }
-
-            if (keys[39]) {
-                if (player.velX < currentSpeed) player.velX++;
-                playerFacingRight = true;
-            }
-            if (keys[37]) {
-                if (player.velX > -currentSpeed) player.velX--;
-                playerFacingRight = false;
-            }
-            
-
-            animationId = requestAnimationFrame(updateGame);
-            
-            if (score > 25) {
-                hasStarted = true;
-            }
-
-            player.velX *= friction;
-            player.velY += gravity;
-
-            player.x += player.velX;
-            player.y += player.velY;
-
-            // Handle 360 rotation
-            if (player.isRotating) {
-                player.rotation += 15; // Speed of rotation
-                if (player.rotation >= 360) {
-                    player.rotation = 0;
-                    player.isRotating = false;
-                }
-            }
-
-            // Screen scroll
-            if (player.y < logicalHeight / 4) {
-                const scrollAmount = Math.abs(player.velY);
-                player.y += scrollAmount;
-                bgScroll = (bgScroll + scrollAmount * 0.3) % logicalHeight; // Slower for parallax
-
-                platforms.forEach(platform => {
-                    platform.y += scrollAmount;
-
-                    if (platform.y > logicalHeight) {
-                        const lastPlatformY = Math.min(...platforms.map(p => p.y));
-                        const gap = Math.floor(Math.random() * (maxPlatformGap - minPlatformGap + 1)) + minPlatformGap;
-                    
-                        platform.y = lastPlatformY - gap;
-                        
-                        const margin = 10;
-                        platform.width = 100 + Math.random() * 75;
-                        platform.x = margin + Math.random() * (logicalWidth - platform.width - margin * 2);
-
-                        platform.level = currentLevel++;
-                        updateWeather(currentLevel);
-                        platform.timeOccupied = 0;
-                        platform.isFalling = false;
-                    
-                        const hasEnemy = Math.random() < 0.15; // Increased to 15%
-                        const enemyType = hasEnemy ? (Math.random() < 0.5 ? 1 : 2) : null;
-                        const isMovingVertically = false;
-                        const isCracked = false;
-                        const hasCannon = Math.random() < 0.04;
-                    
-                        platform.hasEnemy = hasEnemy;
-                        platform.enemyType = enemyType;
-                        platform.isCracked = isCracked;
-                        platform.enemyX = Math.random() * (platform.width - 50); // assuming enemy size is 50
-                        platform.enemyDirection = 1;
-                        platform.hasStar = Math.random() < 0.1;
-                        platform.hasCannon = hasCannon;
-                        platform.cannonActivated = false;
-                        platform.isFalling = false;
-
-                    
-                        // Vertical movement reset
-                        platform.isMovingVertically = isMovingVertically;
-                        platform.verticalOffset = 0;
-                        platform.verticalDir = 1;
-                    }                    
-                });
-            }
-            const verticalSpeed = baseVerticalSpeed + Math.floor(maxPlatformLevel / speedIncreaseEvery) * 0.2;
-
-            platforms.forEach(platform => {
-                if (platform.isMovingVertically) {
-                    platform.verticalOffset += verticalSpeed * platform.verticalDir;
-
-                    if (Math.abs(platform.verticalOffset) > 20) {
-                        platform.verticalDir *= -1;
-                    }
-
-                    platform.y += verticalSpeed * platform.verticalDir;
-                }
-            });
-
-
-            // Canvas bounds
-            if (player.x >= logicalWidth - player.width) player.x = logicalWidth - player.width;
-            else if (player.x <= 0) player.x = 0;
-
-            if (player.y >= logicalHeight - player.height) {
-                if (score < 20) {
-                    // Allow safe landing on ground early in game
-                    player.y = logicalHeight - player.height;
-                    player.velY = 0;
-                    player.jumping = false;
-                    canDoubleJump = true;
-                } else {
-                    // Game over after score >= 20
-                    showGameOver();
-                    cancelAnimationFrame(animationId);
-                }
-            }
-            
-
-            
-            // PLATFORM COLLISION + SCORING + FALLING TIMER
-            platforms.forEach(platform => {
-                const collidingWithPlayer =
-                    player.x < platform.x + platform.width &&
-                    player.x + player.width > platform.x &&
-                    player.y + player.height > platform.y &&
-                    player.y + player.height < platform.y + platform.height &&
-                    player.velY >= 0;
-
-                if (collidingWithPlayer && !platform.isFalling) {
-                    // Player landed on the platform
-                    player.jumping = false;
-                    player.velY = 0;
-                    player.y = platform.y - player.height;
-                    canDoubleJump = true;
-
-                    // 🚀 Trigger cannon launch
-                    if (platform.hasCannon && !platform.cannonActivated) {
-                        platform.cannonActivated = true;
-                        // 🔊 Play cannon sound
-                        cannonShotSound.currentTime = 0;
-                        cannonShotSound.play();
-                        player.velY = -35; // immediate super jump
-                        player.jumping = true;
-                        player.isRotating = true;
-                        player.rotation = 0;
-                    }
-                    
-                    // Scoring logic
-                    if (platform.level > maxPlatformLevel) {
-                        maxPlatformLevel = platform.level;
-
-                        const now = Date.now();
-                        const timeSinceLast = (now - lastScoreTime) / 1000;
-
-                        let bonus = 0;
-                        if (timeSinceLast < 2) {
-                            bonus = Math.floor((2 - timeSinceLast) * 5);
-                        }
-
-                        score = maxPlatformLevel * 5 + bonus;
-                        lastScoreTime = now;
-                    }
-                }
-            });
-
-            // ENEMY MOVEMENT (TYPE 2 ONLY)
-            platforms.forEach(platform => {
-                if (platform.hasEnemy && platform.enemyType === 2) {
-                    platform.enemyX += platform.enemyDirection * 1.5;
-
-                    if (platform.enemyX < 0 || platform.enemyX > platform.width - 20) {
-                        platform.enemyDirection *= -1;
-                    }
-                }
-            });
-
-            // Lightning collision check
-            if (lightning.active) {
-                platforms.forEach(platform => {
-                    if (platform.hasEnemy) {
-                        const enemyWidth = 50;
-                        const enemyHeight = 50;
-                        const enemyX = platform.x + platform.enemyX;
-                        const enemyY = platform.y - 28; // matching draw alignment
-
-                        const hitByLightning =
-                            lightning.x < enemyX + enemyWidth &&
-                            lightning.x + lightning.width > enemyX &&
-                            lightning.y < enemyY + enemyHeight &&
-                            lightning.y + lightning.height > enemyY;
-
-                        if (hitByLightning) {
-                            platform.hasEnemy = false;
-                            killCount++;
-                            // 🐉 Play kill sound
-                            dragonKillSound.currentTime = 0;
-                            dragonKillSound.play().catch(() => {});
-                        }
-                    }
-                });
-            }
-
-            // ENEMY COLLISION CHECK — PLAYER TOUCH = GAME OVER
-            platforms.forEach(platform => {
-                if (platform.hasEnemy) {
-                    const enemyWidth = 20;
-                    const enemyHeight = 20;
-                    const enemyX = platform.x + platform.enemyX;
-                    const enemyY = platform.y - enemyHeight;
-
-                    const touchingEnemy =
-                        player.x < enemyX + enemyWidth &&
-                        player.x + player.width > enemyX &&
-                        player.y < enemyY + enemyHeight &&
-                        player.y + player.height > enemyY;
-
-                    if (touchingEnemy && !isInvincible && iFrames <= 0) {
-                        lives--;
-                        iFrames = 90; // 1.5 seconds of invincibility
-                        
-                        // Spawn a falling heart animation
-                        fallingHearts.push({
-                            x: 10 + lives * 30, // Position of the heart that was just lost
-                            y: 30,
-                            velY: 2,
-                            opacity: 1
-                        });
-
-                        if (lives <= 0) {
-                            showGameOver();
-                            cancelAnimationFrame(animationId);
-                        }
-                    }
-                }
-            });
-
-            // Star collection
-            platforms.forEach(platform => {
-                if (platform.hasStar) {
-                    const starSize = 24;
-                    const starX = platform.x + platform.width / 2 - starSize / 2;
-                    const starY = platform.y - starSize - 5;
-
-                    const touchingStar =
-                        player.x < starX + starSize &&
-                        player.x + player.width > starX &&
-                        player.y < starY + starSize &&
-                        player.y + player.height > starY;
-
-                    if (touchingStar) {
-                        platform.hasStar = false;
-                    
-                        // Activate invincibility
-                        isInvincible = true;
-                        invincibilityStartTime = Date.now();
-                    
-                        // Play star collected sound
-                        starCollectSound.play();
-                    }       
-                }
-            });
-
-
-            // PLATFORM BEHAVIOR: FALLING + RESET STAND TIME
-            platforms.forEach(platform => {
-                if (platform.isFalling) {
-                    platform.y += 5;
-                    if (platform.y > logicalHeight + 100) {
-                        platform.width = 0;
-                        platform.height = 0;
-                    }
-                } else {
-                    const playerStanding =
-                        player.x + player.width > platform.x &&
-                        player.x < platform.x + platform.width &&
-                        player.y + player.height === platform.y;
-
-                    if (!playerStanding) {
-                        platform.timeOccupied = 0;
-                    }
-                }
-            });
-
-            // DRAW EVERYTHING (PLATFORMS + ENEMIES + LEVEL LABELS)
-
-            // Clear screen
-            ctx.clearRect(0, 0, logicalWidth, logicalHeight);
-
-            // Draw the background with parallax effect
-            ctx.drawImage(backgroundImage, 0, bgScroll, logicalWidth, logicalHeight);
-            ctx.drawImage(backgroundImage, 0, bgScroll - logicalHeight, logicalWidth, logicalHeight);
-          
-
-            // Draw player with image
-            if (iFrames % 10 < 5) { // Flickering effect when hit
-                ctx.save();
-                ctx.translate(player.x + player.width / 2, player.y + player.height / 2); // move origin to center of player
-                if (player.isRotating) {
-                    ctx.rotate((player.rotation * Math.PI) / 180);
-                }
-                ctx.scale(playerFacingRight ? -1 : 1, 1); // flip horizontally to face movement direction
                 
-                // Choose image based on jumping state
-                const currentImg = player.jumping ? jumpingPlayerImage : playerImage;
-
-                ctx.drawImage(
-                    currentImg,
-                    -player.width / 2,
-                    -player.height / 2,
-                    player.width,
-                    player.height
+                // Check collision with player
+                const playerX = playerLane * laneWidth + laneWidth / 2;
+                const objX = obj.lane * laneWidth + laneWidth / 2;
+                
+                const distance = Math.sqrt(
+                    Math.pow(playerX - objX, 2) + 
+                    Math.pow(playerY - obj.y, 2)
                 );
-                ctx.restore();
+                
+                if (distance < (playerSize + objectSize) / 2) {
+                    // Collision detected
+                    if (obj.type === OBJECT_TYPES.OBSTACLE) {
+                        lives--;
+                        updateStats();
+                        if (lives <= 0) {
+                            gameOver();
+                        }
+                    } else {
+                        coins += obj.type.value;
+                        updateStats();
+                        if (coins >= 100) {
+                            gameWin();
+                        }
+                    }
+                    fallingObjects.splice(i, 1);
+                }
             }
-
+            
+            // Randomly add new objects
+            if (Math.random() < 0.02) {  // 2% chance each frame
+                addFallingObject();
+            }
+        }
         
-            // Glow effect when invincible
-            if (isInvincible) {
-                ctx.save();
-                ctx.shadowColor = 'gold';
-                ctx.shadowBlur = 15;
-                ctx.strokeStyle = 'gold';
-                ctx.lineWidth = 4;
+        // Draw everything on canvas
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-                const centerX = player.x + player.width / 2;
-                const centerY = player.y + player.height / 2;
-                const radius = Math.max(player.width, player.height) / 2 + 5;
-            
+            // Draw lanes (faint lines)
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            for (let i = 1; i < laneCount; i++) {
+                const x = i * laneWidth;
                 ctx.beginPath();
-                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
                 ctx.stroke();
-                ctx.restore();
-            }            
+            }
             
-            // Draw platforms and enemies
-            platforms.forEach(platform => {
-                // Platform
-                const imageToDraw = platform.isCracked ? crackedPlatformImage : platformImage;
-                ctx.drawImage(imageToDraw, platform.x, platform.y, platform.width, platform.height);
-
-
-                // Platform level label every 10 levels
-                if (platform.level % 10 === 0) {
-                    const label =  platform.level;
-                    const labelX = platform.x + platform.width / 2;
-                    const labelY = platform.y + platform.height / 2 + 1;
-
-                    ctx.font = 'bold 14px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.lineWidth = 4;
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-                    ctx.strokeText(label, labelX, labelY);
-                    ctx.fillStyle = 'black';
-                    ctx.fillText(label, labelX, labelY);
-                }
-
-                // Enemy Draw
-                if (platform.hasEnemy) {
-                    const enemyX = platform.x + platform.enemyX;
-                    const enemyY = platform.y - 28; // Raise a bit for better alignment
-                    const enemySize = 50;
+            // Draw player (blue box)
+            ctx.fillStyle = 'blue';
+            const playerX = playerLane * laneWidth + (laneWidth - playerSize) / 2;
+            ctx.fillRect(playerX, playerY, playerSize, playerSize);
+            
+            // Draw falling objects
+            for (const obj of fallingObjects) {
+                const objX = obj.lane * laneWidth + laneWidth / 2;
                 
-                    if (platform.enemyType === 1) {
-                        ctx.drawImage(enemyImageType1, enemyX, enemyY, enemySize, enemySize);
-                    } else if (platform.enemyType === 2) {
-                        const enemyFlipX = platform.enemyDirection > 0 ? -1 : 1;
-                        ctx.save();
-                        ctx.translate(enemyX + enemySize / 2, enemyY + enemySize / 2); // center the flip
-                        ctx.scale(enemyFlipX, 1); // flip horizontally if needed
-                        ctx.drawImage(
-                            enemyImageType2,
-                            -enemySize / 2,
-                            -enemySize / 2,
-                            enemySize,
-                            enemySize
-                        );
-                        ctx.restore();
-                    }                    
-                }
+                ctx.fillStyle = obj.type.color;
                 
-                // Star powerup Draw
-                if (platform.hasStar) {
-                    const starSize = 24;
-                    const starX = platform.x + platform.width / 2 - starSize / 2;
-                    const starY = platform.y - starSize - 5;
-                
-                    ctx.drawImage(starImage, starX, starY, starSize, starSize);
-                } 
-                
-                // Cannon Draw
-                if (platform.hasCannon) {
-                    const cannonX = platform.x + platform.width / 2 - 35;
-                    const cannonY = platform.y - 35;
-                
-                    ctx.drawImage(cannonImage, cannonX, cannonY, 70, 70);
-                }
-            });
-
-            // --- Weather Effects (Moved outside platform loop for performance) ---
-            if (currentWeather === 'rainy') {
-                ctx.strokeStyle = 'rgba(174,194,224,0.5)';
-                ctx.lineWidth = 1;
-                rainDrops.forEach(drop => {
+                if (obj.type.shape === 'circle') {
+                    // Draw coin (yellow circle)
                     ctx.beginPath();
-                    ctx.moveTo(drop.x, drop.y);
-                    ctx.lineTo(drop.x, drop.y + drop.length);
+                    ctx.arc(objX, obj.y, objectSize / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (obj.type.shape === 'diamond') {
+                    // Draw gem (purple diamond)
+                    ctx.beginPath();
+                    ctx.moveTo(objX, obj.y - objectSize / 2);
+                    ctx.lineTo(objX + objectSize / 2, obj.y);
+                    ctx.lineTo(objX, obj.y + objectSize / 2);
+                    ctx.lineTo(objX - objectSize / 2, obj.y);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (obj.type.shape === 'x') {
+                    // Draw obstacle (red X)
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = obj.type.color;
+                    const size = objectSize / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(objX - size, obj.y - size);
+                    ctx.lineTo(objX + size, obj.y + size);
+                    ctx.moveTo(objX + size, obj.y - size);
+                    ctx.lineTo(objX - size, obj.y + size);
                     ctx.stroke();
-
-                    drop.y += drop.speed;
-                    if (drop.y > logicalHeight) {
-                        drop.y = -drop.length;
-                        drop.x = Math.random() * logicalWidth;
-                    }
-                });
-            } else if (currentWeather === 'snowy') {
-                ctx.fillStyle = 'white';
-                snowFlakes.forEach(flake => {
-                    ctx.beginPath();
-                    ctx.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    flake.y += flake.speed;
-                    flake.x += flake.drift;
-
-                    if (flake.y > logicalHeight) {
-                        flake.y = -flake.radius;
-                        flake.x = Math.random() * logicalWidth;
-                    }
-                });
-            } else if (currentWeather === 'foggy') {
-                fogOffset += 0.2; // slower movement for a calm feel
-            
-                for (let i = 0; i < 3; i++) {
-                    const offset = (fogOffset + i * 150) % logicalWidth;
-                    const opacity = 0.03 + (i % 2) * 0.02;
-            
-                    ctx.fillStyle = `rgba(200, 200, 200, ${opacity})`;
-                    ctx.beginPath();
-                    ctx.ellipse(offset, logicalHeight / 2 + i * 40 - 40, 250, 70, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            
-                // Very light haze over the screen
-                ctx.fillStyle = 'rgba(180, 180, 180, 0.02)';
-                ctx.fillRect(0, 0, logicalWidth, logicalHeight);
-            }
-
-            // Draw Lightning (after platforms so it renders on top)
-            if (lightning.active) {
-                const drawY = lightning.y + lightning.height / 2;
-
-                // Outer glow
-                ctx.save();
-                ctx.strokeStyle = '#00ffff';
-                ctx.lineWidth = 6;
-                ctx.shadowBlur = 25;
-                ctx.shadowColor = '#00ffff';
-                ctx.globalAlpha = 0.7;
-
-                ctx.beginPath();
-                ctx.moveTo(lightning.x, drawY);
-
-                const segmentCount = 14;
-                const segmentWidth = lightning.width / segmentCount;
-                let currentX = lightning.x;
-                const offsets = [];
-
-                for (let i = 1; i <= segmentCount; i++) {
-                    currentX += segmentWidth;
-                    const offset = (Math.random() - 0.5) * 30;
-                    offsets.push({ x: currentX, y: drawY + offset });
-                    ctx.lineTo(currentX, drawY + offset);
-                }
-                ctx.stroke();
-                ctx.restore();
-
-                // Inner bright core
-                ctx.save();
-                ctx.strokeStyle = 'white';
-                ctx.lineWidth = 2;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = 'white';
-
-                ctx.beginPath();
-                ctx.moveTo(lightning.x, drawY);
-                offsets.forEach(pt => ctx.lineTo(pt.x, pt.y));
-                ctx.stroke();
-                ctx.restore();
-            }
-
-            // --- Draw Double Jump Particles ---
-            for (let i = doubleJumpParticles.length - 1; i >= 0; i--) {
-                const p = doubleJumpParticles[i];
-
-                const dx = Math.cos(p.angle) * p.speed;
-                const dy = Math.sin(p.angle) * p.speed;
-
-                p.x += dx;
-                p.y += dy;
-                p.alpha -= 0.03;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 0, ${p.alpha})`;
-                ctx.fill();
-
-                if (p.alpha <= 0) {
-                    doubleJumpParticles.splice(i, 1);
                 }
             }
-
-
-            // --- Draw Hearts & Score Top-Left ---
-            ctx.textAlign = 'left';
-            
-            // Hearts
-            ctx.font = '24px Arial';
-            let hearts = '';
-            for(let i = 0; i < 3; i++) {
-                hearts += (i < lives) ? '❤️' : '🖤'; // Red heart for life, black for lost
-            }
-            ctx.fillText(hearts, 10, 30);
-
-            // Score (now under hearts)
-            ctx.font = '16px "Press Start 2P", Arial';
-            ctx.fillStyle = '#fff';
-            ctx.fillText('Score: ' + score, 10, 60);
-
-            // --- Draw Falling Hearts Animation ---
-            ctx.font = '24px Arial';
-            for (let i = fallingHearts.length - 1; i >= 0; i--) {
-                const fh = fallingHearts[i];
-                ctx.globalAlpha = fh.opacity;
-                ctx.fillText('❤️', fh.x, fh.y);
-                fh.y += fh.velY;
-                fh.velY += 0.2; // Gravity for heart
-                fh.opacity -= 0.01;
-                if (fh.opacity <= 0) fallingHearts.splice(i, 1);
-            }
-            ctx.globalAlpha = 1.0;
-
-            // --- Draw Kill Counter Top-Right ---
-            ctx.font = '14px "Press Start 2P", Arial';
-            ctx.fillStyle = '#ff4444';
-            ctx.textAlign = 'right';
-            ctx.fillText('\uD83D\uDC32 Dragons: ' + killCount, logicalWidth - 10, 30);
-
-            // --- Power-Up Bar ---
-            if (isInvincible) {
-                const x = 10;
-                const y = 80;
-                const width = 120;
-                const height = 8;
-                const timeLeft = Math.max(0, 7000 - (Date.now() - invincibilityStartTime));
-                const progress = timeLeft / 7000;
-                const fillWidth = width * progress;
-
-                const gradient = ctx.createLinearGradient(x, y, x + fillWidth, y);
-                gradient.addColorStop(0, '#fff700');
-                gradient.addColorStop(1, '#ffcc00');
-
-                // Background
-                ctx.fillStyle = '#333';
-                ctx.fillRect(x, y, width, height);
-
-                // Foreground (yellow bar)
-                ctx.fillStyle = gradient;
-                ctx.fillRect(x, y, fillWidth, height);
-
-                // Border
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(x, y, width, height);
-            }
         }
-
-        function showGameOver() {
-            // Stop music
-            bgMusic.pause();
-            bgMusic.currentTime = 0;
-            // Stop weather sounds
-            rainSound.pause();
-            snowSound.pause();
-            fogSound.pause();
-
-            rainSound.currentTime = 0;
-            snowSound.currentTime = 0;
-            fogSound.currentTime = 0;
-
-            // Play music
-            gameOverMusic.play();
-
-            // Save score
-            let scores = JSON.parse(localStorage.getItem('scores') || '[]');
-            scores.push(score);
-            scores.sort((a, b) => b - a); // descending
-            scores = scores.slice(0, 10); // keep top 10
-            localStorage.setItem('scores', JSON.stringify(scores));
         
-            // Update final score
-            document.getElementById('finalScore').textContent = score;
-        
-            // Update leaderboard
-            const list = document.getElementById('leaderboard');
-            list.innerHTML = '';
-            scores.forEach(s => {
-                const li = document.createElement('li');
-                li.textContent = s;
-                list.appendChild(li);
-            });
-        
-            // Show Game Over screen
-            document.getElementById('gameOverScreen').style.display = 'block';
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
         }
-
-        function restartGame() {
-            // Stop game over music
-            gameOverMusic.pause();
-            gameOverMusic.currentTime = 0;
-
-            // Restart music
-            bgMusic.pause();
-            bgMusic.currentTime = 0;
-
-            location.reload();
+        
+        // Update statistics display
+        function updateStats() {
+            gameStats.innerText = `Coins: ${coins} | Lives: ${lives}`;
         }
-
-        function toggleLeaderboard() {
-            const list = document.getElementById('leaderboard');
-            list.style.display = list.style.display === 'none' ? 'block' : 'none';
-        } 
         
-        function updateWeather(level) {
-            const index = Math.floor(level / 100) % weatherTypes.length;
-            const newWeather = weatherTypes[index];
-            
-            if (currentWeather === newWeather) return; // Don't reset if it's already the same
-            currentWeather = newWeather;
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            gameOverScreen.style.display = 'block';
+        }
         
-            // Initialize rain or snow particles when the weather changes
-            if (currentWeather === 'rainy') {
-                rainDrops = Array.from({ length: 50 }, () => ({
-                    x: Math.random() * logicalWidth,
-                    y: Math.random() * logicalHeight,
-                    length: 10 + Math.random() * 10,
-                    speed: 2 + Math.random() * 2
-                }));
-            } else if (currentWeather === 'snowy') {
-                snowFlakes = Array.from({ length: 40 }, () => ({
-                    x: Math.random() * logicalWidth,
-                    y: Math.random() * logicalHeight,
-                    radius: 1 + Math.random() * 2,
-                    speed: 0.5 + Math.random(),
-                    drift: (Math.random() - 0.5) * 0.5
-                }));
-            } else if (currentWeather === 'foggy') {
-                fogOffset = 0;
+        // Game win
+        function gameWin() {
+            gameRunning = false;
+            gameWinScreen.style.display = 'block';
+        }
+        
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            // Arrow keys
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                movePlayer('left');
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                movePlayer('right');
             }
-
-            playWeatherSound();
-        }  
+        });
         
-        function playWeatherSound() {
-            // Stop all weather sounds
-            rainSound.pause();
-            snowSound.pause();
-            fogSound.pause();
+        restartButton.addEventListener('click', init);
+        playAgainButton.addEventListener('click', init);
         
-            rainSound.currentTime = 0;
-            snowSound.currentTime = 0;
-            fogSound.currentTime = 0;
-        
-            // Play the current weather sound
-            if (currentWeather === 'rainy') {
-                rainSound.play();
-            } else if (currentWeather === 'snowy') {
-                snowSound.play();
-            } else if (currentWeather === 'foggy') {
-                fogSound.play();
-            }
-        }        
-        
-        // updateGame();
+        // Start the game
+        init();
+        gameLoop();
     </script>
-    <div id="gameOverScreen" style="
-            display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 400px;
-            height: 600px;
-            background: url('assets/images/game_over_screen.jpeg') no-repeat center center / cover;
-            color: white;
-            text-align: center;
-            font-family: 'Press Start 2P', Arial, sans-serif;
-            padding: 40px 20px;
-            box-sizing: border-box;
-            border: 2px solid #fff;
-            border-radius: 12px;
-            z-index: 10;
-        ">
-        <p style="
-            position: absolute;
-            top: 175px; /* moved down a bit (~1cm) */
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 16px;
-            white-space: nowrap;
-            color: #ffcc00;
-            text-shadow: 0 0 3px #000, 2px 2px #ff9900, 0 0 5px #ffcc00;
-            z-index: 11;
-        ">
-            Your Score: <span id="finalScore">0</span>
-        </p>
-        <button onclick="restartGame()" style="
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            padding: 10px 20px;
-            font-size: 14px;
-            background-color: #5b3a29;
-            color: white;
-            border: 2px solid #fff;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Press Start 2P', Arial, sans-serif;
-            box-shadow: 0 0 5px #000;
-        ">
-            Play Again
-        </button>
-        <button onclick="toggleLeaderboard()" style="
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            font-size: 14px;
-            background-color: #5b3a29;
-            color: white;
-            border: 2px solid #fff;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Press Start 2P', Arial, sans-serif;
-            box-shadow: 0 0 5px #000;
-        ">
-            Top 10
-        </button>
-        <button onclick="toggleLeaderboard()" style="
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            font-size: 14px;
-            background-color: #5b3a29;
-            color: white;
-            border: 2px solid #fff;
-            border-radius: 8px;
-            cursor: pointer;
-            font-family: 'Press Start 2P', Arial, sans-serif;
-            box-shadow: 0 0 5px #000;
-        ">
-            Top 10
-        </button>
-        <ol id="leaderboard" style="
-            display: none;
-            position: absolute;
-            left: 20px;
-            bottom: 100px;
-            width: 180px;
-            height: auto;
-            font-family: 'Press Start 2P', Arial, sans-serif;
-            font-size: 12px;
-            color: white;
-            line-height: 1.7;
-            text-align: left;
-            list-style-position: inside;
-            z-index: 11;
-        ">
-        </ol>
-    </div>    
-</div>
 </body>
-</html>
